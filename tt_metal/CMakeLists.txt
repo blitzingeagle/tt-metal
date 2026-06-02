@@ -148,6 +148,7 @@ set_target_properties(
 
 if(BUILD_PROGRAMMING_EXAMPLES)
     add_subdirectory(programming_examples)
+    add_subdirectory(experiments)
 endif()
 
 # Allow internal files to access the public API "by default" and without the
