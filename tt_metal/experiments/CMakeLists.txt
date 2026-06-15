@@ -12,6 +12,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/experiments")
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/hello_world)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/dram_loopback)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mm_single_core)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/mm_multi_core)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tile_matrix_add)
 
 install(
@@ -19,6 +20,7 @@ install(
         hello_world
         dram_loopback
         mm_single_core
+        mm_multi_core
         tile_matrix_add
     # DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples
     # FIXME(afuller): Something funky is happening when installing files into
@@ -36,6 +38,7 @@ install(
         hello_world
         dram_loopback
         mm_single_core
+        mm_multi_core
         tile_matrix_add
     DESTINATION "${CMAKE_INSTALL_DATADIR}/tenstorrent/kernels"
     COMPONENT metalium-examples

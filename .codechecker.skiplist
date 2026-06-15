@@ -19,3 +19,6 @@
 -*_generated.cpp
 -*.pb.h
 -*.pb.cc
+
+# Experiments
+-*/experiments/*

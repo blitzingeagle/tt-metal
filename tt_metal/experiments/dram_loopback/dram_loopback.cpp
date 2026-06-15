@@ -18,15 +18,18 @@ int main() {
     bool pass = true;
 
     try {
+        // Define the logical device and get its command queue
         constexpr int device_id = 0;
         std::shared_ptr<distributed::MeshDevice> mesh_device = distributed::MeshDevice::create_unit_mesh(device_id);
         distributed::MeshCommandQueue& cq = mesh_device->mesh_command_queue();
 
+        // Define sizes for tile memory use
         constexpr uint32_t num_tiles = 50;
         constexpr uint32_t elements_per_tile = tt::constants::TILE_WIDTH * tt::constants::TILE_HEIGHT;  // 32x32
         constexpr uint32_t tile_size_bytes = sizeof(bfloat16) * elements_per_tile;                      // 32x32x2
         constexpr uint32_t dram_buffer_size = tile_size_bytes * num_tiles;
 
+        // Configure and set up DRAM and SRAM(L1) buffers on device
         distributed::DeviceLocalBufferConfig dram_config{
             .page_size = tile_size_bytes,
             .buffer_type = BufferType::DRAM,
@@ -49,6 +52,7 @@ int main() {
         std::shared_ptr<distributed::MeshBuffer> output_dram_buffer =
             distributed::MeshBuffer::create(dram_buffer_config, dram_config, mesh_device.get());
 
+        // Create the workload and program for the kernel for the core
         distributed::MeshWorkload workload;
         distributed::MeshCoordinateRange device_range = distributed::MeshCoordinateRange(mesh_device->shape());
         Program program = CreateProgram();
@@ -67,6 +71,7 @@ int main() {
                 .compile_args = dram_copy_compile_time_args,
             });
 
+        // Prepare the data to be given to device, and load it into DRAM
         std::vector<bfloat16> input_vec(elements_per_tile * num_tiles);
         std::mt19937 rng(std::random_device{}());
         std::uniform_real_distribution<float> distribution(0.0f, 100.f);
@@ -75,6 +80,7 @@ int main() {
         }
         distributed::EnqueueWriteMeshBuffer(cq, input_dram_buffer, input_vec, false);
 
+        // Prepare runtime arguments for kernel, and send the program to device
         const std::vector<uint32_t> runtime_args = {
             l1_buffer->address(),
             input_dram_buffer->address(),
@@ -85,8 +91,10 @@ int main() {
         workload.add_program(device_range, std::move(program));
         distributed::EnqueueMeshWorkload(cq, workload, false);
 
+        // Blocking wait for finish
         distributed::Finish(cq);
 
+        // Retrieve results from device DRAM
         std::vector<bfloat16> result_vec;
         distributed::EnqueueReadMeshBuffer(cq, result_vec, output_dram_buffer, true);
 
