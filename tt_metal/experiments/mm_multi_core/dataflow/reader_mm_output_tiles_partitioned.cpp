@@ -7,6 +7,9 @@
 #include "api/dataflow/dataflow_api.h"
 
 #include "api/debug/dprint.h"
+#include "tt_metal/hw/inc/api/dataflow/dataflow_api.h"
+#include "ttnn/cpp/ttnn/kernel/dataflow/moreh_common.hpp"
+#include "ttnn/cpp/ttnn/operations/ccl/kernel_common/sharding_addrgen.hpp"
 
 void kernel_main() {
     // same arg indices as in reader_binary_diff_lengths for compat
@@ -40,25 +43,39 @@ void kernel_main() {
 
         // Read all K tiles for this output position
         for (uint32_t k = 0; k < Kt; k++) {
-            // Read A's tile at (out_row, k)
-            uint32_t tile_A = out_row * Kt + k;  // A is MK, so we stride by Kt
-            {
-                cb_reserve_back(cb_id_in0, 1);
-                uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
-                noc_async_read_page(tile_A, a, l1_write_addr_in0);
-                noc_async_read_barrier();
-                cb_push_back(cb_id_in0, 1);
-            }
+            // // Read A's tile at (out_row, k)
+            // uint32_t tile_A = out_row * Kt + k;  // A is MK, so we stride by Kt
+            // {
+            //     cb_reserve_back(cb_id_in0, 1);
+            //     uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
+            //     noc_async_read_page(tile_A, a, l1_write_addr_in0);
+            //     noc_async_read_barrier();
+            //     cb_push_back(cb_id_in0, 1);
+            // }
+            //
+            // // Read B's tile at (k, out_col)
+            // uint32_t tile_B = k * Nt + out_col;  // B is KN, so we stride by Nt
+            // {
+            //     cb_reserve_back(cb_id_in1, 1);
+            //     uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in1);
+            //     noc_async_read_page(tile_B, b, l1_write_addr_in1);
+            //     noc_async_read_barrier();
+            //     cb_push_back(cb_id_in1, 1);
+            // }
 
-            // Read B's tile at (k, out_col)
-            uint32_t tile_B = k * Nt + out_col;  // B is KN, so we stride by Nt
-            {
-                cb_reserve_back(cb_id_in1, 1);
-                uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in1);
-                noc_async_read_page(tile_B, b, l1_write_addr_in1);
-                noc_async_read_barrier();
-                cb_push_back(cb_id_in1, 1);
-            }
+            // Since tile A and B are not causal, and have disjoint source and destination, we can perform noc reads for
+            // both and use one barrier after
+            uint32_t tile_A = out_row * Mt + k;
+            uint32_t tile_B = k * Nt + out_col;
+            cb_reserve_back(cb_id_in0, 1);
+            cb_reserve_back(cb_id_in1, 1);
+            uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
+            uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in1);
+            noc_async_read_page(tile_A, a, l1_write_addr_in0);
+            noc_async_read_page(tile_B, b, l1_write_addr_in1);
+            noc_async_read_barrier();
+            cb_push_back(cb_id_in0, 1);
+            cb_push_back(cb_id_in1, 1);
         }
     }
 }

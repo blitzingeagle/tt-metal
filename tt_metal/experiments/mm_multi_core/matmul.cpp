@@ -7,6 +7,7 @@
 #include <tt-metalium/distributed.hpp>
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/tensor_accessor_args.hpp>
+#include <bmm_op.hpp>
 
 using namespace tt::constants;
 using namespace tt;
@@ -15,6 +16,38 @@ using namespace tt::tt_metal;
 #ifndef OVERRIDE_KERNEL_PREFIX
 #define OVERRIDE_KERNEL_PREFIX ""
 #endif
+
+void golden_matmul(
+    std::vector<bfloat16>& a,
+    std::vector<bfloat16>& b,
+    std::vector<bfloat16>& output,
+    uint32_t M,
+    uint32_t N,
+    uint32_t K) {
+    std::uint32_t idx_c = 0;
+    std::uint32_t idx_a = 0;
+    std::uint32_t idx_b = 0;
+
+    float c_f;
+    float float_tmp;
+    std::vector<bfloat16> c_bf(M * N, 0);
+
+    for (int i = 0; i < M; i++) {
+        for (int j = 0; j < N; j++) {
+            idx_c = j + (i * N);
+            idx_a = i * K;
+            idx_b = j;
+            c_f = 0;
+            for (int k_m = 0; k_m < K; k_m++) {
+                float_tmp = static_cast<float>(a[idx_a]) * static_cast<float>(b[idx_b]);
+                c_f += float_tmp;
+                idx_a += 1;
+                idx_b += N;
+            }
+            output.at(idx_c) = bfloat16(c_f);
+        }
+    }
+}
 
 void matmul_multi_core(
     const std::vector<bfloat16>& a,
@@ -213,6 +246,10 @@ int main() {
             v = bfloat16(dist(rng));
         }
 
+        // Compute the golden result from the row-major inputs BEFORE tilizing them.
+        std::vector<bfloat16> golden_vec(M * N, 0);
+        golden_matmul(src0_vec, src1_vec, golden_vec, M, N, K);
+
         src0_vec = tilize_nfaces(src0_vec, M, K);
         src1_vec = tilize_nfaces(src1_vec, K, N);
 
@@ -221,6 +258,10 @@ int main() {
         dst0_vec = untilize_nfaces(dst0_vec, M, N);
 
         fmt::print("Matmul result of size {}\n", dst0_vec.size());
+
+        float pearson = check_bfloat16_vector_pcc(golden_vec, dst0_vec);
+        fmt::print("Metalium vs Golden -- PCC = {}\n", pearson);
+        TT_FATAL(pearson > 0.97, "PCC not high enough. Result PCC: {}, Expected PCC: 0.97", pearson);
 
         pass &= mesh_device->close();
     } catch (const std::exception& e) {
